@@ -1,69 +1,87 @@
-# FastAPI WebSocket Server (websocket_server.py)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, List
+from typing import Dict, Set
 import json
+import logging
 from datetime import datetime
-from pydantic import BaseModel
+
+# ロギングの設定
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# CORSの設定
+# CORSの設定を更新
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:8000"],  # フロントエンドのオリジンを設定
+    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
 )
 
-
-# dabareroomごとの接続管理を行うクラス
-class DebateRoom:
+# デバートルームごとの接続管理
+class ConnectionManager:
     def __init__(self):
-        self.connections: List[WebSocket] = []
+        self.active_connections: Dict[str, Set[WebSocket]] = {}
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket, debate_id: str):
         await websocket.accept()
-        self.connections.append(websocket)
+        if debate_id not in self.active_connections:
+            self.active_connections[debate_id] = set()
+        self.active_connections[debate_id].add(websocket)
+        logger.info(f"Client connected to debate {debate_id}. Total connections: {len(self.active_connections[debate_id])}")
 
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.connections:
-            self.connections.remove(websocket)
+    def disconnect(self, websocket: WebSocket, debate_id: str):
+        if debate_id in self.active_connections:
+            self.active_connections[debate_id].discard(websocket)
+            if not self.active_connections[debate_id]:
+                del self.active_connections[debate_id]
+            logger.info(f"Client disconnected from debate {debate_id}. Remaining connections: {len(self.active_connections.get(debate_id, set()))}")
 
-    async def broadcast(self, message: dict):
-        for connection in self.connections:
-            await connection.send_json(message)
+    async def broadcast(self, message: dict, debate_id: str):
+        if debate_id in self.active_connections:
+            for connection in self.active_connections[debate_id]:
+                try:
+                    await connection.send_json(message)
+                except Exception as e:
+                    logger.error(f"Error broadcasting to client: {e}")
+                    await self.disconnect(connection, debate_id)
 
+manager = ConnectionManager()
 
-# DebateRoom管理
-debate_rooms: Dict[int, DebateRoom] = {}
-
-@app.websocket("ws/debate/{debate_id}")
-async def websocket_endpoint(websocket: WebSocket, debate_id: int):
-    # debate_room が存在しない場合は作成
-    if debate_id not in debate_rooms:
-        debate_rooms[debate_id] = DebateRoom()
-
-    room = debate_rooms[debate_id]
-    await room.connect(websocket)
-
+@app.websocket("/ws/debate/{debate_id}/")
+async def websocket_endpoint(websocket: WebSocket, debate_id: str):
     try:
+        await manager.connect(websocket, debate_id)
+        logger.debug(f"New connection established for debate: {debate_id}")
+        
         while True:
-            date = await websocket.receive_text()
-            message_date = json.loads(date)
-
-            # masseageにtimestampを追加
-            message_date["timestamp"] = datetime.now().strftime('%Y-%m-%d_%H:%M %S')
-
-
-            # roommemberにブロードキャスト
-            await   room.broadcast(message_date)
-
-    except WebSocketDisconnect:
-        room.disconnect(websocket)
+            try:
+                data = await websocket.receive_text()
+                message_data = json.loads(data)
+                message_data["timestamp"] = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+                logger.debug(f"Received message in debate {debate_id}: {message_data}")
+                
+                await manager.broadcast(message_data, debate_id)
+                
+            except WebSocketDisconnect:
+                manager.disconnect(websocket, debate_id)
+                break
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON received: {e}")
+            except Exception as e:
+                logger.error(f"Error processing message: {e}")
+                break
+                
     except Exception as e:
-        print(f"Error: {str(e)}")
-        room.disconnect(websocket)
+        logger.error(f"Connection error: {e}")
+        manager.disconnect(websocket, debate_id)
 
+# ヘルスチェックエンドポイント
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "connections": {
+        debate_id: len(connections) 
+        for debate_id, connections in manager.active_connections.items()
+    }}
