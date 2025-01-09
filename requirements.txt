@@ -5,3 +5,5 @@ uvicorn
 aiofiles
 python-multipart
 websockets
+numpy
+django[argon2, asyncio]
