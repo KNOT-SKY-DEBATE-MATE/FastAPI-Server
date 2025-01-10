@@ -1,0 +1,9 @@
+vosk==0.3.31
+sounddevice
+fastapi
+uvicorn
+aiofiles
+python-multipart
+websockets
+numpy
+django[argon2, asyncio]

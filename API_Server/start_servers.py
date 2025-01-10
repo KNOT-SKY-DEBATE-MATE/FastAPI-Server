@@ -15,7 +15,7 @@ def main():
     commands = [
         "uvicorn chat_websocket:app --host localhost --port 8001 --reload",
         "uvicorn voice_recognition_websocket:app --host 0.0.0.0 --port 8002 --reload",
-        "uvicorn voice_call_API:app --host 0.0.0.0 --port 8003 --reload",
+        "uvicorn voice_chat_API:app --host 0.0.0.0 --port 8003 --reload",
         "uvicorn video_call_API:app --host 0.0.0.0 --port 8004 --reload",
 
     ]
