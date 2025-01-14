@@ -64,6 +64,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+
 @app.websocket("/ws/debate/{debate_id}/")
 async def websocket_endpoint(websocket: WebSocket, debate_id: str):
     await manager.connect(websocket, debate_id)

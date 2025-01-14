@@ -17,6 +17,7 @@ def main():
         "uvicorn voice_recognition_websocket:app --host 0.0.0.0 --port 8002 --reload",
         "uvicorn voice_chat_API:app --host 0.0.0.0 --port 8003 --reload",
         "uvicorn video_call_API:app --host 0.0.0.0 --port 8004 --reload",
+        "uvicorn debate_analysis_API:app --host 0.0.0.0 --port 8005 --reload",
 
     ]
 
